@@ -68,7 +68,7 @@ function syncDateInputs() {
     } else if (currentPeriod === 'thisMonth') {
         const first = new Date(now.getFullYear(), now.getMonth(), 1);
         dfEl.value = first.toISOString().split('T')[0];
-    } else if (currentPeriod === 'all') {
+    } else if (currentPeriod === 0 || currentPeriod === 'all') {
         dfEl.value = '';
         dtEl.value = '';
     } else if (typeof currentPeriod === 'number' && currentPeriod > 0) {
