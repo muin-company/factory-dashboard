@@ -240,6 +240,14 @@ Browser (SPA)
 - **백엔드**: Flask (Python), 30초마다 클라이언트가 API 폴링
 - **데이터**: OpenClaw 세션 JSONL 파일을 직접 파싱 (별도 DB 없음)
 
+## 문서
+
+| 문서 | 설명 |
+|------|------|
+| [USER_GUIDE.md](USER_GUIDE.md) | 사용자 가이드 — 실행, 화면 구성, 지표 해석, 문제 해결 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 기여 가이드 — 개발 환경, 모델 추가, PR 규칙 |
+| [README.md](README.md) | 이 문서 — 프로젝트 개요 및 API 레퍼런스 |
+
 ## License
 
 MIT

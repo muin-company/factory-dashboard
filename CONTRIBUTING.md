@@ -89,6 +89,24 @@ PRICING = {
 - JavaScript: 세미콜론 사용, camelCase
 - HTML/CSS: 기존 스타일 따르기
 
+## 테스트
+
+현재 자동화된 테스트 스위트는 없습니다. 변경 후 다음을 확인하세요:
+
+1. **서버 시작**: `python app.py` → 에러 없이 시작
+2. **API 응답**: `curl http://localhost:5051/api/sessions` → 유효한 JSON
+3. **헬스체크**: `curl http://localhost:5051/api/health` → `{"status": "ok"}`
+4. **UI 확인**: 브라우저에서 차트 렌더링, 기간 필터 동작 확인
+
+## 로드맵 / 기여 아이디어
+
+- [ ] 알림 기능 (일일 비용 임계값 초과 시)
+- [ ] CSV/JSON 데이터 내보내기
+- [ ] 다크모드 지원
+- [ ] 단위 테스트 추가 (pytest)
+- [ ] Docker 이미지 제공
+- [ ] 다중 호스트 지원 (원격 에이전트 모니터링)
+
 ## 라이선스
 
 MIT — 자유롭게 사용하고 수정하세요.
