@@ -2,6 +2,8 @@
 
 OpenClaw 에이전트의 API 비용 및 토큰 사용량을 실시간으로 모니터링하는 대시보드.
 
+> **Why?** AI 에이전트를 운영하면 토큰과 비용이 쌓입니다. Factory Dashboard는 어떤 에이전트가 어떤 모델에 얼마를 쓰는지 한눈에 보여줍니다.
+
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
 ![Flask](https://img.shields.io/badge/flask-3.0-green)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
