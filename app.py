@@ -10,6 +10,8 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
+import db as taskdb
+
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
@@ -522,6 +524,66 @@ def health():
     return jsonify({'status': 'ok', 'service': 'factory-dashboard-v2'})
 
 
+# ── Task Queue API ────────────────────────────────────
+
+@app.route('/api/tasks', methods=['POST'])
+def create_task():
+    data = request.get_json(force=True) if request.is_json else {}
+    title = (data.get('title') or '').strip()
+    if not title:
+        return jsonify({'success': False, 'error': 'title is required'}), 400
+    description = data.get('description', '')
+    status = data.get('status', 'pending')
+    priority = data.get('priority', 5)
+    try:
+        priority = int(priority)
+    except (ValueError, TypeError):
+        priority = 5
+    task = taskdb.create_task(title=title, description=description, status=status, priority=priority)
+    return jsonify({'success': True, 'task': task}), 201
+
+
+@app.route('/api/tasks', methods=['GET'])
+def list_tasks():
+    status = request.args.get('status')
+    priority = request.args.get('priority')
+    tasks = taskdb.list_tasks(status=status, priority=priority)
+    return jsonify({'success': True, 'tasks': tasks, 'total': len(tasks)})
+
+
+@app.route('/api/tasks/<task_id>', methods=['GET'])
+def get_task(task_id):
+    task = taskdb.get_task(task_id)
+    if not task:
+        return jsonify({'success': False, 'error': 'not found'}), 404
+    return jsonify({'success': True, 'task': task})
+
+
+@app.route('/api/tasks/<task_id>', methods=['PUT'])
+def update_task(task_id):
+    existing = taskdb.get_task(task_id)
+    if not existing:
+        return jsonify({'success': False, 'error': 'not found'}), 404
+    data = request.get_json(force=True) if request.is_json else {}
+    task = taskdb.update_task(
+        task_id,
+        title=data.get('title'),
+        description=data.get('description'),
+        status=data.get('status'),
+        priority=data.get('priority'),
+    )
+    return jsonify({'success': True, 'task': task})
+
+
+@app.route('/api/tasks/<task_id>', methods=['DELETE'])
+def delete_task(task_id):
+    deleted = taskdb.delete_task(task_id)
+    if not deleted:
+        return jsonify({'success': False, 'error': 'not found'}), 404
+    return jsonify({'success': True})
+
+
 if __name__ == '__main__':
+    taskdb.init_db()
     print("Factory Dashboard V2 - http://localhost:5051")
     app.run(debug=False, port=5051, host='0.0.0.0')

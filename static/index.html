@@ -87,6 +87,82 @@
         </div>
     </div>
 
+    <!-- Task Queue -->
+    <div class="card">
+        <div class="card-head">
+            Task Queue
+            <div style="display:flex;gap:8px;align-items:center;">
+                <select id="taskFilter" style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;">
+                    <option value="">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="queued">Queued</option>
+                    <option value="running">Running</option>
+                    <option value="done">Done</option>
+                    <option value="failed">Failed</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+                <button class="btn-apply" id="btnNewTask" style="font-size:12px;">+ New Task</button>
+            </div>
+        </div>
+        <div class="card-body" style="padding:0;">
+            <table id="taskTable">
+                <thead>
+                    <tr>
+                        <th style="width:40px"></th>
+                        <th>Title</th>
+                        <th style="width:80px" class="text-center">Priority</th>
+                        <th style="width:100px" class="text-center">Status</th>
+                        <th style="width:140px">Created</th>
+                        <th style="width:80px" class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="taskTableBody">
+                    <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Task Create Modal -->
+    <div id="taskModal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span class="modal-title">New Task</span>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label class="modal-label">Title *</label>
+                <input type="text" id="taskTitle" class="modal-input" placeholder="Task title">
+                <label class="modal-label">Description</label>
+                <textarea id="taskDesc" class="modal-textarea" rows="4" placeholder="Describe the task..."></textarea>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div>
+                        <label class="modal-label">Priority</label>
+                        <select id="taskPriority" class="modal-input">
+                            <option value="1">1 — Critical</option>
+                            <option value="2">2 — High</option>
+                            <option value="3">3 — Medium-High</option>
+                            <option value="5" selected>5 — Normal</option>
+                            <option value="7">7 — Low</option>
+                            <option value="10">10 — Lowest</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="modal-label">Status</label>
+                        <select id="taskStatus" class="modal-input">
+                            <option value="pending" selected>Pending</option>
+                            <option value="queued">Queued</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" id="modalCancel">Cancel</button>
+                <button class="btn-apply" id="modalCreate">Create Task</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Charts: Daily Cost -->
     <div class="chart-row">
         <div class="card">

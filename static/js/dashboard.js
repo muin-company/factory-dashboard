@@ -485,3 +485,135 @@ function shortModel(m) {
         .replace('gpt-5.3-codex', 'codex5.3').replace('grok-4-1-fast', 'grok-fast')
         .replace('delivery-mirror', 'mirror');
 }
+
+
+// ── Task Queue ──────────────────────────────────────
+
+const TASK_API = '/api/tasks';
+const STATUS_ICONS = {
+    pending: '⏳', queued: '📋', running: '🔄', done: '✅', failed: '❌', cancelled: '🚫'
+};
+
+function priorityClass(p) {
+    if (p <= 2) return 'p-high';
+    if (p <= 4) return 'p-medium';
+    if (p <= 6) return 'p-normal';
+    return 'p-low';
+}
+
+function fmtDate(iso) {
+    if (!iso) return '-';
+    const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
+    return d.toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+async function fetchTasks() {
+    const filter = document.getElementById('taskFilter').value;
+    const url = filter ? `${TASK_API}?status=${filter}` : TASK_API;
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        renderTasks(data.tasks || []);
+    } catch (e) {
+        document.getElementById('taskTableBody').innerHTML =
+            '<tr><td colspan="6" class="text-center text-muted">Failed to load tasks</td></tr>';
+    }
+}
+
+function renderTasks(tasks) {
+    const tbody = document.getElementById('taskTableBody');
+    if (!tasks.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No tasks yet — click "+ New Task" to create one</td></tr>';
+        return;
+    }
+    tbody.innerHTML = tasks.map(t => `
+        <tr>
+            <td class="text-center task-icon">${STATUS_ICONS[t.status] || '❓'}</td>
+            <td>
+                <strong>${escHtml(t.title)}</strong>
+                ${t.description ? `<div class="text-muted" style="font-size:12px;margin-top:2px;">${escHtml(t.description).substring(0,80)}${t.description.length > 80 ? '…' : ''}</div>` : ''}
+            </td>
+            <td class="text-center"><span class="priority-badge ${priorityClass(t.priority)}">P${t.priority}</span></td>
+            <td class="text-center"><span class="task-status ${t.status}">${t.status}</span></td>
+            <td style="font-size:12px;">${fmtDate(t.created_at)}</td>
+            <td class="text-center">
+                <button class="btn-icon" onclick="deleteTask('${t.id}')" title="Delete">🗑️</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+async function deleteTask(id) {
+    if (!confirm('Delete this task?')) return;
+    await fetch(`${TASK_API}/${id}`, { method: 'DELETE' });
+    fetchTasks();
+}
+
+function setupTaskUI() {
+    const modal = document.getElementById('taskModal');
+    const btnNew = document.getElementById('btnNewTask');
+    const btnClose = document.getElementById('modalClose');
+    const btnCancel = document.getElementById('modalCancel');
+    const btnCreate = document.getElementById('modalCreate');
+    const filterSelect = document.getElementById('taskFilter');
+
+    btnNew.addEventListener('click', () => {
+        document.getElementById('taskTitle').value = '';
+        document.getElementById('taskDesc').value = '';
+        document.getElementById('taskPriority').value = '5';
+        document.getElementById('taskStatus').value = 'pending';
+        modal.style.display = 'flex';
+        document.getElementById('taskTitle').focus();
+    });
+
+    btnClose.addEventListener('click', () => modal.style.display = 'none');
+    btnCancel.addEventListener('click', () => modal.style.display = 'none');
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+
+    btnCreate.addEventListener('click', async () => {
+        const title = document.getElementById('taskTitle').value.trim();
+        if (!title) { alert('Title is required'); return; }
+        btnCreate.disabled = true;
+        btnCreate.textContent = 'Creating...';
+        try {
+            await fetch(TASK_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title,
+                    description: document.getElementById('taskDesc').value,
+                    priority: parseInt(document.getElementById('taskPriority').value),
+                    status: document.getElementById('taskStatus').value,
+                }),
+            });
+            modal.style.display = 'none';
+            fetchTasks();
+        } catch (e) {
+            alert('Failed to create task');
+        } finally {
+            btnCreate.disabled = false;
+            btnCreate.textContent = 'Create Task';
+        }
+    });
+
+    filterSelect.addEventListener('change', fetchTasks);
+
+    // Initial load
+    fetchTasks();
+}
+
+// Hook into DOMContentLoaded
+(function() {
+    const origReady = window.onload;
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupTaskUI);
+    } else {
+        setupTaskUI();
+    }
+})();
