@@ -1,0 +1,3 @@
+-- Migration 002: Add scheduler-related columns to tasks table
+-- Factory Dashboard V2 — Phase 2: Auto-spawn
+-- Applied via safe_add_column() in db.py (idempotent)

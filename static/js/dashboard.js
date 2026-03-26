@@ -612,8 +612,170 @@ function setupTaskUI() {
 (function() {
     const origReady = window.onload;
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', setupTaskUI);
+        document.addEventListener('DOMContentLoaded', () => { setupTaskUI(); setupSchedulerUI(); });
     } else {
         setupTaskUI();
+        setupSchedulerUI();
     }
 })();
+
+
+// ── Scheduler UI ──────────────────────────────────────
+
+const SCHED_API = '/api/scheduler';
+let schedulerPollTimer = null;
+
+function setupSchedulerUI() {
+    const toggleBtn = document.getElementById('btnSchedulerToggle');
+    const settingsBtn = document.getElementById('btnSchedulerSettings');
+    const modal = document.getElementById('schedulerModal');
+    const modalClose = document.getElementById('schedModalClose');
+    const modalCancel = document.getElementById('schedModalCancel');
+    const modalSave = document.getElementById('schedModalSave');
+
+    // Toggle scheduler start/stop
+    toggleBtn.addEventListener('click', async () => {
+        const badge = document.getElementById('schedulerStatusBadge');
+        const isActive = badge.classList.contains('active');
+        toggleBtn.disabled = true;
+        toggleBtn.textContent = isActive ? 'Stopping...' : 'Starting...';
+        try {
+            const endpoint = isActive ? `${SCHED_API}/stop` : `${SCHED_API}/start`;
+            const res = await fetch(endpoint, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                await fetchSchedulerStatus();
+            }
+        } catch (e) {
+            console.error('Scheduler toggle error:', e);
+        } finally {
+            toggleBtn.disabled = false;
+        }
+    });
+
+    // Settings modal
+    settingsBtn.addEventListener('click', async () => {
+        await loadSchedulerConfig();
+        modal.style.display = 'flex';
+    });
+    modalClose.addEventListener('click', () => modal.style.display = 'none');
+    modalCancel.addEventListener('click', () => modal.style.display = 'none');
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+
+    modalSave.addEventListener('click', async () => {
+        modalSave.disabled = true;
+        modalSave.textContent = 'Saving...';
+        try {
+            const whitelist = [];
+            document.querySelectorAll('#schedModelChecks input[type=checkbox]:checked').forEach(cb => {
+                whitelist.push(cb.value);
+            });
+
+            const config = {
+                max_concurrent: parseInt(document.getElementById('schedCfgMaxConcurrent').value),
+                daily_budget: parseFloat(document.getElementById('schedCfgDailyBudget').value),
+                poll_interval: parseInt(document.getElementById('schedCfgPollInterval').value),
+                timeout_seconds: parseInt(document.getElementById('schedCfgTimeout').value),
+                model_whitelist: whitelist,
+                default_model: document.getElementById('schedCfgDefaultModel').value,
+                dry_run: document.getElementById('schedCfgDryRun').checked,
+            };
+
+            await fetch(`${SCHED_API}/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config),
+            });
+            modal.style.display = 'none';
+            await fetchSchedulerStatus();
+        } catch (e) {
+            alert('Failed to save settings');
+        } finally {
+            modalSave.disabled = false;
+            modalSave.textContent = 'Save Settings';
+        }
+    });
+
+    // Initial fetch + periodic polling
+    fetchSchedulerStatus();
+    schedulerPollTimer = setInterval(fetchSchedulerStatus, 10000);
+}
+
+async function fetchSchedulerStatus() {
+    try {
+        const res = await fetch(`${SCHED_API}/status`);
+        const data = await res.json();
+        if (data.success) {
+            renderSchedulerStatus(data);
+        }
+    } catch (e) {
+        console.error('Scheduler status error:', e);
+    }
+}
+
+function renderSchedulerStatus(data) {
+    const badge = document.getElementById('schedulerStatusBadge');
+    const toggleBtn = document.getElementById('btnSchedulerToggle');
+    const isActive = data.is_running;
+
+    badge.textContent = isActive ? 'ACTIVE' : 'OFF';
+    badge.className = 'scheduler-status ' + (isActive ? 'active' : 'inactive');
+    toggleBtn.textContent = isActive ? 'Stop' : 'Start';
+    toggleBtn.style.background = isActive ? 'var(--red)' : 'var(--accent)';
+
+    document.getElementById('schedActiveAgents').textContent = data.active_agents || 0;
+    document.getElementById('schedMaxConcurrent').textContent = data.config?.max_concurrent || 3;
+    document.getElementById('schedPendingTasks').textContent = data.pending_tasks || 0;
+    document.getElementById('schedBudgetUsed').textContent = '$' + (data.today_cost || 0).toFixed(2);
+    document.getElementById('schedBudgetLimit').textContent = (data.daily_budget || 20).toFixed(2);
+
+    const stats = data.stats || {};
+    document.getElementById('schedTotalSpawned').textContent = stats.total_spawned || 0;
+    document.getElementById('schedCompleted').textContent = stats.total_completed || 0;
+    document.getElementById('schedFailed').textContent = stats.total_failed || 0;
+
+    // Recent spawns log
+    const spawns = data.recent_spawns || [];
+    const logDiv = document.getElementById('schedulerLog');
+    const logBody = document.getElementById('schedulerLogBody');
+
+    if (spawns.length > 0) {
+        logDiv.style.display = 'block';
+        logBody.innerHTML = spawns.slice().reverse().map(s => {
+            const time = s.timestamp ? new Date(s.timestamp).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '-';
+            const dryTag = s.dry_run ? '<span class="scheduler-log-dry">DRY-RUN</span>' : '';
+            return `<div class="scheduler-log-item">
+                <span class="scheduler-log-time">${time}</span>
+                <span class="scheduler-log-task">${escHtml(s.title || s.task_id)}</span>
+                ${dryTag}
+                <span class="text-muted">${shortModel(s.model || '')}</span>
+            </div>`;
+        }).join('');
+    } else {
+        logDiv.style.display = 'none';
+    }
+}
+
+async function loadSchedulerConfig() {
+    try {
+        const res = await fetch(`${SCHED_API}/config`);
+        const data = await res.json();
+        if (!data.success) return;
+        const cfg = data.config;
+
+        document.getElementById('schedCfgMaxConcurrent').value = cfg.max_concurrent || 3;
+        document.getElementById('schedCfgDailyBudget').value = cfg.daily_budget || 20;
+        document.getElementById('schedCfgPollInterval').value = cfg.poll_interval || 30;
+        document.getElementById('schedCfgTimeout').value = cfg.timeout_seconds || 600;
+        document.getElementById('schedCfgDefaultModel').value = cfg.default_model || 'anthropic/claude-sonnet-4';
+        document.getElementById('schedCfgDryRun').checked = cfg.dry_run || false;
+
+        // Model whitelist
+        const whitelist = cfg.model_whitelist || ['opus', 'sonnet'];
+        document.querySelectorAll('#schedModelChecks input[type=checkbox]').forEach(cb => {
+            cb.checked = whitelist.includes(cb.value);
+        });
+    } catch (e) {
+        console.error('Failed to load scheduler config:', e);
+    }
+}

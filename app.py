@@ -4,6 +4,7 @@
 import subprocess
 import json
 import os
+import logging
 from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 from pathlib import Path
@@ -11,9 +12,16 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 import db as taskdb
+from scheduler import TaskScheduler
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+
+# Global scheduler instance
+task_scheduler = TaskScheduler()
 
 OPENCLAW_BASE = os.path.expanduser("~/.openclaw/agents")
 OPENCLAW_CONFIG = os.path.expanduser("~/.openclaw/openclaw.json")
@@ -581,6 +589,57 @@ def delete_task(task_id):
     if not deleted:
         return jsonify({'success': False, 'error': 'not found'}), 404
     return jsonify({'success': True})
+
+
+# ── Scheduler API ─────────────────────────────────────
+
+@app.route('/api/scheduler/start', methods=['POST'])
+def scheduler_start():
+    result = task_scheduler.start()
+    return jsonify({'success': True, **result})
+
+
+@app.route('/api/scheduler/stop', methods=['POST'])
+def scheduler_stop():
+    result = task_scheduler.stop()
+    return jsonify({'success': True, **result})
+
+
+@app.route('/api/scheduler/status', methods=['GET'])
+def scheduler_status():
+    status = task_scheduler.get_status()
+    return jsonify({'success': True, **status})
+
+
+@app.route('/api/scheduler/config', methods=['GET'])
+def scheduler_get_config():
+    return jsonify({'success': True, 'config': task_scheduler.config})
+
+
+@app.route('/api/scheduler/config', methods=['PUT'])
+def scheduler_update_config():
+    data = request.get_json(force=True) if request.is_json else {}
+    # Validate and cast types
+    updates = {}
+    if 'max_concurrent' in data:
+        updates['max_concurrent'] = max(1, min(10, int(data['max_concurrent'])))
+    if 'daily_budget' in data:
+        updates['daily_budget'] = max(1.0, min(100.0, float(data['daily_budget'])))
+    if 'poll_interval' in data:
+        updates['poll_interval'] = max(10, min(300, int(data['poll_interval'])))
+    if 'model_whitelist' in data:
+        wl = data['model_whitelist']
+        if isinstance(wl, list):
+            updates['model_whitelist'] = [str(m) for m in wl]
+    if 'dry_run' in data:
+        updates['dry_run'] = bool(data['dry_run'])
+    if 'default_model' in data:
+        updates['default_model'] = str(data['default_model'])
+    if 'timeout_seconds' in data:
+        updates['timeout_seconds'] = max(60, min(3600, int(data['timeout_seconds'])))
+
+    task_scheduler.update_config(**updates)
+    return jsonify({'success': True, 'config': task_scheduler.config})
 
 
 if __name__ == '__main__':

@@ -19,17 +19,46 @@ def get_db():
     return conn
 
 
+def _column_exists(conn, table, column):
+    """Check if a column exists in a table."""
+    cursor = conn.execute(f"PRAGMA table_info({table})")
+    return any(row[1] == column for row in cursor.fetchall())
+
+
+def _safe_add_column(conn, table, column, coltype, default=None):
+    """Add a column if it doesn't already exist."""
+    if not _column_exists(conn, table, column):
+        default_clause = f" DEFAULT {default}" if default is not None else ""
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}{default_clause}")
+
+
 def init_db():
-    """Run all migration scripts in order."""
+    """Run all migration scripts in order, then apply safe column additions."""
     conn = get_db()
     try:
+        # Phase 1: Run SQL migration files
         migration_files = sorted(
             f for f in os.listdir(MIGRATIONS_DIR) if f.endswith('.sql')
         )
         for mf in migration_files:
             path = os.path.join(MIGRATIONS_DIR, mf)
             with open(path, 'r') as f:
-                conn.executescript(f.read())
+                sql = f.read().strip()
+                if sql:
+                    conn.executescript(sql)
+        conn.commit()
+
+        # Phase 2: Idempotent column additions for scheduler
+        _safe_add_column(conn, 'tasks', 'agent_id', 'TEXT')
+        _safe_add_column(conn, 'tasks', 'session_key', 'TEXT')
+        _safe_add_column(conn, 'tasks', 'model', 'TEXT')
+        _safe_add_column(conn, 'tasks', 'queued_at', 'TEXT')
+        _safe_add_column(conn, 'tasks', 'started_at', 'TEXT')
+        _safe_add_column(conn, 'tasks', 'completed_at', 'TEXT')
+        _safe_add_column(conn, 'tasks', 'result_summary', 'TEXT')
+        _safe_add_column(conn, 'tasks', 'error_message', 'TEXT')
+        _safe_add_column(conn, 'tasks', 'cost_usd', 'REAL', '0.0')
+        _safe_add_column(conn, 'tasks', 'tokens_used', 'INTEGER', '0')
         conn.commit()
     finally:
         conn.close()
@@ -118,5 +147,77 @@ def delete_task(task_id):
         cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         conn.commit()
         return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ── Scheduler Helpers ─────────────────────────────────
+
+def count_tasks_by_status(status):
+    """Count tasks with a given status."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE status = ?", (status,)
+        ).fetchone()
+        return row[0] if row else 0
+    finally:
+        conn.close()
+
+
+def get_pending_tasks(limit=10):
+    """Get pending tasks ordered by priority (1=highest), then creation date."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE status = 'pending' ORDER BY priority ASC, created_at ASC LIMIT ?",
+            (limit,)
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def transition_task(task_id, new_status, **extra_fields):
+    """Transition a task to a new status with timestamp and optional fields."""
+    now = _now()
+    conn = get_db()
+    try:
+        updates = {'status': new_status, 'updated_at': now}
+
+        # Auto-set timestamps based on status
+        if new_status == 'queued':
+            updates['queued_at'] = now
+        elif new_status == 'running':
+            updates['started_at'] = now
+        elif new_status in ('done', 'failed', 'cancelled'):
+            updates['completed_at'] = now
+
+        # Merge extra fields
+        allowed_extra = {'agent_id', 'session_key', 'model', 'result_summary',
+                         'error_message', 'cost_usd', 'tokens_used'}
+        for k, v in extra_fields.items():
+            if k in allowed_extra and v is not None:
+                updates[k] = v
+
+        set_clause = ', '.join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [task_id]
+        conn.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)
+        conn.commit()
+        return get_task(task_id)
+    finally:
+        conn.close()
+
+
+def get_today_spawned_cost():
+    """Get total cost_usd of tasks spawned today (UTC)."""
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM tasks WHERE started_at LIKE ? AND status IN ('running', 'done', 'failed')",
+            (today + '%',)
+        ).fetchone()
+        return row[0] if row else 0.0
     finally:
         conn.close()
